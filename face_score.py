@@ -58,6 +58,10 @@ class FACEScorer:
     def score_encoded(self, src_encoded, tgt_encoded):
         src_nll = self.get_nll(src_encoded)
         tgt_nll = self.get_nll(tgt_encoded)
+        scores = self.score_nlls(src_nll, tgt_nll)
+        return scores
+    
+    def score_nlls(self, src_nll: List, tgt_nll: List):
         src_spectrum = self.get_spectrum(src_nll)
         tgt_spectrum = self.get_spectrum(tgt_nll)
         scores = self.spectrum_dist(src_spectrum, tgt_spectrum)
