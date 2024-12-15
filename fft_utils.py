@@ -157,7 +157,7 @@ class FFTProcessor(object):
             })
         return df
     
-    def process(self, input_data: Union[str, list]):
+    def process(self, input_data: Union[str, list], packed=True):
         """
         Carry out FFT analysis on data stored in input_file
         """
@@ -177,6 +177,9 @@ class FFTProcessor(object):
             freqs, powers, sids = self._fft_batch(data, require_sid=self.require_sid, verbose=self.verbose)
 
         # Collect result 
+        if not packed:
+            return freqs, powers, sids
+        
         df = self._create_fft_df(freqs, powers, sids)
 
         return df
