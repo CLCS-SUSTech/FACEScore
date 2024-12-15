@@ -39,12 +39,16 @@ def jensen_shannon_divergence(spectrum1, spectrum2):
     # NOTICE: spectrum will be normalized in function
     return jensenshannon(spectrum1, spectrum2)
 
-def cal_metrics(spectrum1, freqs1, spectrum2, freqs2, metrics=None):
+def cal_metrics(spectrum1, freqs1, spectrum2, freqs2, metrics=None, use_max=False):
     if metrics is None:
         metrics = ['so', 'corr', 'spearman', 'emd', 'kl', 'js']
     results = []
     for sp1, freq1, sp2, freq2 in zip(spectrum1, freqs1, spectrum2, freqs2):
-        length = 1000
+        if use_max:
+            length = max(len(sp1), len(sp2))
+        else:
+            length = 1000
+            
         x = np.linspace(0, 0.5, length)
 
         f1 = interp1d(freq1, sp1, kind='linear', fill_value='extrapolate')

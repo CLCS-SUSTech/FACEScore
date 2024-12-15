@@ -8,7 +8,7 @@ from metrics import cal_metrics
 
 
 class FACEScorer:
-    def __init__(self, model_path: str, tokenizer_path: str = None, device: str = 'cuda:0', max_length = 1024, batch_size=4, metrics=None):
+    def __init__(self, model_path: str, tokenizer_path: str = None, device: str = 'cuda:0', max_length = 1024, batch_size=4, metrics=None, use_max=False):
         self.model = self.load_model(model_path, device)
         if tokenizer_path is None:
             self.tokenizer = self.init_tokenizer(model_path)
@@ -19,7 +19,8 @@ class FACEScorer:
         self.batch_size = batch_size
         self.nll_loss = nn.NLLLoss(reduction='none')
         self.log_softmax = nn.LogSoftmax(dim=1)
-        self.metrics = metrics 
+        self.metrics = metrics
+        self.use_max = use_max
 
     def load_model(self, model_path: str, device: str):
         model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
@@ -142,6 +143,8 @@ class FACEScorer:
     
     def get_spectrum(self, nlls, fft_args=None, packed=False):
         nlls = [nll.cpu().numpy() for nll in nlls]
+        if not self.use_max:
+            nlls = [(nll[:1000] if len(nll) > 1000 else nll) for nll in nlls]
         if fft_args is None:
             fft_processor = FFTProcessor()
         else:
@@ -158,5 +161,5 @@ class FACEScorer:
             return powers, freqs
     
     def spectrum_dist(self, src_p, src_f, tgt_p, tgt_f, metrics=None):
-        results = cal_metrics(src_p, src_f, tgt_p, tgt_f, metrics)
+        results = cal_metrics(src_p, src_f, tgt_p, tgt_f, metrics, self.use_max)
         return results
