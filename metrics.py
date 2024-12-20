@@ -40,7 +40,7 @@ def jensen_shannon_divergence(spectrum1, spectrum2):
     return jensenshannon(spectrum1, spectrum2)
 
 def cal_metrics(spectrum1, freqs1, spectrum2, freqs2, metrics=None, use_max=False):
-    if metrics is None:
+    if metrics is None or len(metrics) == 0:
         metrics = ['so', 'corr', 'spearman', 'emd', 'kl', 'js']
     results = []
     for sp1, freq1, sp2, freq2 in zip(spectrum1, freqs1, spectrum2, freqs2):

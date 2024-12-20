@@ -22,6 +22,20 @@ class FACEScorer:
                  fft_require_sid=True,
                  fft_verbose=False,
                  use_max=False):
+        """
+        :param model_path: path to the model
+        :param tokenizer_path: path to the tokenizer, if None, tokenizer will be loaded from model_path
+        :param device: cuda device to run the model
+        :param max_length: max length of the input text
+        :param batch_size: batch size for processing
+        :param metrics: a list of metrics to calculate the distance between two spectra, choose from ['so', 'corr', 'spearman', 'emd', 'kl', 'js']
+        :param fft_method: 'fft' or 'periodogram'
+        :param fft_preprocess: 'none', 'zscore', 'minmax', 'log', 'logzs
+        :param fft_value: 'norm', 'real', 'imag'
+        :param fft_require_sid: whether to output the sids of the spectrums
+        :param fft_verbose: whether to print the processing details
+        :param use_max: whether to use the max length of the two spectrums to do the interpolation, if False, use 1000 as the length
+        """
         self.model = self.load_model(model_path, device)
         if tokenizer_path is None:
             self.tokenizer = self.init_tokenizer(model_path)
