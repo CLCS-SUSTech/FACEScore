@@ -16,7 +16,11 @@ class FACEScorer:
                  max_length = 1024, 
                  batch_size=4, 
                  metrics=None, 
-                 fft_args=None,
+                 fft_method='fft',
+                 fft_preprocess='none',
+                 fft_value='norm',
+                 fft_require_sid=True,
+                 fft_verbose=False,
                  use_max=False):
         self.model = self.load_model(model_path, device)
         if tokenizer_path is None:
@@ -29,8 +33,14 @@ class FACEScorer:
         self.nll_loss = nn.NLLLoss(reduction='none')
         self.log_softmax = nn.LogSoftmax(dim=1)
         self.metrics = metrics
-        self.fft_args = fft_args
         self.use_max = use_max
+
+        self.fft_method = fft_method
+        self.fft_preprocess = fft_preprocess
+        self.fft_value = fft_value
+        self.fft_require_sid = fft_require_sid
+        self.fft_verbose = fft_verbose
+        
 
     def load_model(self, model_path: str, device: str):
         model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
@@ -142,14 +152,13 @@ class FACEScorer:
         nlls = [nll.cpu().numpy() for nll in nlls]
         if not self.use_max:
             nlls = [(nll[:1000] if len(nll) > 1000 else nll) for nll in nlls]
-        if self.fft_args is None:
-            fft_processor = FFTProcessor()
-        else:
-            fft_processor = FFTProcessor(method=self.fft_args['method'] if 'method' in self.fft_args else 'fft',
-                                        preprocess=self.fft_args['preprocess'] if 'preprocess' in self.fft_args else 'none',
-                                        value=self.fft_args['value'] if 'value' in self.fft_args else 'norm',
-                                        require_sid=self.fft_args['require_sid'] if 'require_sid' in self.fft_args else True,
-                                        verbose=self.fft_args['verbose'] if 'verbose' in self.fft_args else False)
+        
+        fft_processor = FFTProcessor(method=self.fft_method,
+                                    preprocess=self.fft_preprocess,
+                                    value=self.fft_value,
+                                    require_sid=self.fft_require_sid,
+                                    verbose=self.fft_verbose)
+        
         if packed:
             df = fft_processor.process(nlls, packed=True)
             return df
