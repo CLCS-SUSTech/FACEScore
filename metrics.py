@@ -51,8 +51,13 @@ def cal_metrics(spectrum1, freqs1, spectrum2, freqs2, metrics=None, use_max=Fals
             
         x = np.linspace(0, 0.5, length)
 
-        f1 = interp1d(freq1, sp1, kind='linear', fill_value='extrapolate')
-        f2 = interp1d(freq2, sp2, kind='linear', fill_value='extrapolate')
+        x_1 = np.linspace(0, 0.5, len(sp1))
+        x_2 = np.linspace(0, 0.5, len(sp2))
+        f1 = interp1d(x_1, sp1, kind='linear', fill_value='extrapolate')
+        f2 = interp1d(x_2, sp2, kind='linear', fill_value='extrapolate')
+
+        # f1 = interp1d(freq1, sp1, kind='linear', fill_value='extrapolate')
+        # f2 = interp1d(freq2, sp2, kind='linear', fill_value='extrapolate')
         
         sp1 = f1(x)
         sp2 = f2(x)
