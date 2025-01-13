@@ -10,19 +10,19 @@ def test_FACEScorer():
     # Test case 1: Test with a single source and target text
     srcs1 = ["Hello, world!"]
     tgts1 = ["Hello, world!"]
-    scores1 = scorer.score_text(srcs1, tgts1)
+    scores1 = scorer.score_texts(srcs1, tgts1)
     assert isinstance(scores1, torch.Tensor)
 
     # Test case 2: Test with multiple source and target texts
     srcs2 = ["Hello, world!", "How are you?"]
     tgts2 = ["Hello, world!", "I am fine."]
-    scores2 = scorer.score_text(srcs2, tgts2)
+    scores2 = scorer.score_texts(srcs2, tgts2)
     assert isinstance(scores2, torch.Tensor)
 
     # Test case 3: Test with source and target texts of different lengths
     srcs5 = ["Hello, world!"]
     tgts5 = ["Hello, world! How are you?"]
-    scores5 = scorer.score_text(srcs5, tgts5)
+    scores5 = scorer.score_texts(srcs5, tgts5)
     assert isinstance(scores5, torch.Tensor)
 
     print("All test cases pass")
@@ -54,7 +54,7 @@ def test_get_nll():
     # print('Before mask, nll1 = ', nll1)
     # print('After mask, nll1m = ', nll1m)
 
-    nll_list1 = scorer.get_nll(enc1)
+    nll_list1 = scorer.encoded_to_nll(enc1)
     print(nll_list1)
 
 
@@ -67,8 +67,8 @@ def test_pythia_nll():
     texts = load_text_data(text_file)
 
     final_nlls = []
-    for enc in tqdm(scorer.get_encoded(texts)):
-        nll_list = scorer.get_nll(enc)
+    for enc in tqdm(scorer.texts_to_encoded(texts)):
+        nll_list = scorer.encoded_to_nll(enc)
         final_nlls.extend(nll_list)
     scorer.save_nll(final_nlls, 'sample/sample_nll_bbc_gemma2-2b_out.txt')    
 
