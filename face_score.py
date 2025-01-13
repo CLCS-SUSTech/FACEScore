@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import traceback
@@ -9,7 +10,9 @@ from metrics import cal_metrics
 
 
 class FACEScorer:
-    def __init__(self, model_path: str, tokenizer_path: str = None, device: str = 'cuda:0', max_length = 1024, batch_size=4, metrics=None, use_max=False):
+    def __init__(self, model_path: str, tokenizer_path: str = None, device: str = 'cuda:0', 
+                 max_length = 1024, batch_size=4, metrics=None, use_max=False,
+                 fft_args=None):
         self.model = self.load_model(model_path, device)
         if tokenizer_path is None:
             self.tokenizer = self.init_tokenizer(model_path)
@@ -22,6 +25,14 @@ class FACEScorer:
         self.log_softmax = nn.LogSoftmax(dim=1)
         self.metrics = metrics
         self.use_max = use_max
+        if fft_args is None:
+            self.fft_processor = FFTProcessor()
+        else:
+            self.fft_processor = FFTProcessor(method=fft_args['method'] if 'method' in fft_args else 'fft',
+                                        preprocess=fft_args['preprocess'] if 'preprocess' in fft_args else 'none',
+                                        value=fft_args['value'] if 'value' in fft_args else 'norm',
+                                        require_sid=fft_args['require_sid'] if 'require_sid' in fft_args else True,
+                                        verbose=fft_args['verbose'] if 'verbose' in fft_args else False)
 
     def load_model(self, model_path: str, device: str):
         model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
@@ -131,12 +142,17 @@ class FACEScorer:
     
     
     
-    def nll_to_spectrum(self, nlls, fft_args=None, packed=False):
-        nlls = [nll.cpu().numpy() for nll in nlls]
+    def nll_to_spectrum(self, nlls: List, fft_args=None, packed=False):
+        if isinstance(nlls[0], torch.Tensor):
+            nlls = [nll.cpu().numpy() for nll in nlls]
+        elif isinstance(nlls[0], list):
+            nlls = [np.array(nll) for nll in nlls]
+
         if not self.use_max:
             nlls = [(nll[:1000] if len(nll) > 1000 else nll) for nll in nlls]
+
         if fft_args is None:
-            fft_processor = FFTProcessor()
+            fft_processor = self.fft_processor
         else:
             fft_processor = FFTProcessor(method=fft_args['method'] if 'method' in fft_args else 'fft',
                                         preprocess=fft_args['preprocess'] if 'preprocess' in fft_args else 'none',
