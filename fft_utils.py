@@ -93,12 +93,12 @@ class FFTProcessor(object):
             })
         return df
 
-    def _periodogram_batch(self, data: list[np.ndarray], require_sid=False):
+    def _periodogram_batch(self, data: list[np.ndarray], require_sid=False, verbose=False):
         """
         Periodogram method (with smoothing window)
         """
         freqs, powers, seq_ids = [], [], []
-        for i in tqdm.tqdm(range(len(data))):
+        for i in tqdm.tqdm(range(len(data)), disable=not verbose):
             f, p = self._periodogram(data[i])
             freqs.append(f)
             powers.append(p)
