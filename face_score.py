@@ -10,7 +10,7 @@ from metrics import cal_metrics
 
 class FACEScorer:
     def __init__(self, 
-                 model_path: str, 
+                 model_path: str = None,
                  tokenizer_path: str = None, 
                  device: str = 'cuda:0', 
                  max_length = 1024, 
@@ -23,7 +23,7 @@ class FACEScorer:
                  fft_verbose=False,
                  use_max=False):
         """
-        :param model_path: path to the model
+        :param model_path: path to the model, None if inferencing not needed
         :param tokenizer_path: path to the tokenizer, if None, tokenizer will be loaded from model_path
         :param device: cuda device to run the model
         :param max_length: max length of the input text
@@ -36,11 +36,12 @@ class FACEScorer:
         :param fft_verbose: whether to print the processing details
         :param use_max: whether to use the max length of the two spectrums to do the interpolation, if False, use 1000 as the length
         """
-        self.model = self.load_model(model_path, device)
-        if tokenizer_path is None:
-            self.tokenizer = self.init_tokenizer(model_path)
-        else:
-            self.tokenizer = self.init_tokenizer(tokenizer_path)
+        if model_path is not None:
+            self.model = self.load_model(model_path, device)
+            if tokenizer_path is None:
+                self.tokenizer = self.init_tokenizer(model_path)
+            else:
+                self.tokenizer = self.init_tokenizer(tokenizer_path)
         self.device = device
         self.max_length = max_length
         self.batch_size = batch_size
@@ -101,6 +102,7 @@ class FACEScorer:
     
     @torch.no_grad()
     def texts_to_encoded(self, texts: List[str], batch_size=None):
+        assert self.tokenizer is not None
         if batch_size is None:
             batch_size = self.batch_size
         if batch_size >= len(texts):
@@ -108,6 +110,7 @@ class FACEScorer:
                 encoded = self.tokenizer(texts, 
                                         return_tensors='pt', 
                                         padding=True, 
+                                        truncation=True,
                                         max_length=self.max_length).to(self.device)
             except RuntimeError:
                 traceback.print_exc()
@@ -120,6 +123,7 @@ class FACEScorer:
 
     @torch.no_grad()
     def texts_to_encoded_iter(self, texts: List[str], batch_size=None) -> Iterable:
+        assert self.tokenizer is not None
         if batch_size is None:
             batch_size = self.batch_size
         for i in range(0, len(texts), batch_size):
@@ -128,6 +132,7 @@ class FACEScorer:
                 encoded = self.tokenizer(text_list, 
                                         return_tensors='pt', 
                                         padding=True, 
+                                        truncation=True,
                                         max_length=self.max_length).to(self.device)
             except RuntimeError:
                 traceback.print_exc()
@@ -138,6 +143,7 @@ class FACEScorer:
 
     @torch.no_grad()
     def encoded_to_nll(self, encoded) -> List:
+        assert self.model is not None
         ids = encoded['input_ids']
         output = self.model(ids, labels=ids)
         logits = output.logits.to(self.device)
