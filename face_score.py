@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import traceback
@@ -49,6 +50,14 @@ class FACEScorer:
         self.log_softmax = nn.LogSoftmax(dim=1)
         self.metrics = metrics
         self.use_max = use_max
+        if fft_args is None:
+            self.fft_processor = FFTProcessor()
+        else:
+            self.fft_processor = FFTProcessor(method=fft_args['method'] if 'method' in fft_args else 'fft',
+                                        preprocess=fft_args['preprocess'] if 'preprocess' in fft_args else 'none',
+                                        value=fft_args['value'] if 'value' in fft_args else 'norm',
+                                        require_sid=fft_args['require_sid'] if 'require_sid' in fft_args else True,
+                                        verbose=fft_args['verbose'] if 'verbose' in fft_args else False)
 
         self.fft_method = fft_method
         self.fft_preprocess = fft_preprocess
@@ -168,17 +177,25 @@ class FACEScorer:
                     nll = nll.tolist()
                 f.write(' '.join([f'{x:.{decimal}f}' for x in nll]) + '\n')
     
-    def nll_to_spectrum(self, nlls, packed=False):
-        nlls = [nll.cpu().numpy() for nll in nlls]
+
+    def nll_to_spectrum(self, nlls: List, fft_args=None, packed=False):
+        if isinstance(nlls[0], torch.Tensor):
+            nlls = [nll.cpu().numpy() for nll in nlls]
+        elif isinstance(nlls[0], list):
+            nlls = [np.array(nll) for nll in nlls]
+
         if not self.use_max:
             nlls = [(nll[:1000] if len(nll) > 1000 else nll) for nll in nlls]
-        
-        fft_processor = FFTProcessor(method=self.fft_method,
-                                    preprocess=self.fft_preprocess,
-                                    value=self.fft_value,
-                                    require_sid=self.fft_require_sid,
-                                    verbose=self.fft_verbose)
-        
+
+        if fft_args is None:
+            fft_processor = self.fft_processor
+        else:
+            fft_processor = FFTProcessor(method=fft_args['method'] if 'method' in fft_args else 'fft',
+                                        preprocess=fft_args['preprocess'] if 'preprocess' in fft_args else 'none',
+                                        value=fft_args['value'] if 'value' in fft_args else 'norm',
+                                        require_sid=fft_args['require_sid'] if 'require_sid' in fft_args else True,
+                                        verbose=fft_args['verbose'] if 'verbose' in fft_args else False)
+
         if packed:
             df = fft_processor.process(nlls, packed=True)
             return df

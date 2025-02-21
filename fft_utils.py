@@ -20,6 +20,9 @@ class FFTProcessor(object):
         self.require_sid = require_sid
         self.verbose = verbose
     
+    def print_fft_args(self):
+        print(f'FFTProcessor: method={self.method}, preprocess={self.preprocess}, value={self.value}, require_sid={self.require_sid}')
+    
     def load_nll(self, data_file: str, N: int = np.inf):
         data = []
         with open(data_file, 'r') as f:
