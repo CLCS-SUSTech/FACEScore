@@ -10,14 +10,39 @@ from metrics import cal_metrics
 
 
 class FACEScorer:
-    def __init__(self, model_path: str, tokenizer_path: str = None, device: str = 'cuda:0', 
-                 max_length = 1024, batch_size=4, metrics=None, use_max=False,
-                 fft_args=None):
-        self.model = self.load_model(model_path, device)
-        if tokenizer_path is None:
-            self.tokenizer = self.init_tokenizer(model_path)
-        else:
-            self.tokenizer = self.init_tokenizer(tokenizer_path)
+    def __init__(self, 
+                 model_path: str = None,
+                 tokenizer_path: str = None, 
+                 device: str = 'cuda:0', 
+                 max_length = 1024, 
+                 batch_size=4, 
+                 metrics=None, 
+                 fft_method='fft',
+                 fft_preprocess='none',
+                 fft_value='norm',
+                 fft_require_sid=True,
+                 fft_verbose=False,
+                 use_max=False):
+        """
+        :param model_path: path to the model, None if inferencing not needed
+        :param tokenizer_path: path to the tokenizer, if None, tokenizer will be loaded from model_path
+        :param device: cuda device to run the model
+        :param max_length: max length of the input text
+        :param batch_size: batch size for processing
+        :param metrics: a list of metrics to calculate the distance between two spectra, choose from ['so', 'corr', 'spearman', 'emd', 'kl', 'js']
+        :param fft_method: 'fft' or 'periodogram'
+        :param fft_preprocess: 'none', 'zscore', 'minmax', 'log', 'logzs
+        :param fft_value: 'norm', 'real', 'imag'
+        :param fft_require_sid: whether to output the sids of the spectrums
+        :param fft_verbose: whether to print the processing details
+        :param use_max: whether to use the max length of the two spectrums to do the interpolation, if False, use 1000 as the length
+        """
+        if model_path is not None:
+            self.model = self.load_model(model_path, device)
+            if tokenizer_path is None:
+                self.tokenizer = self.init_tokenizer(model_path)
+            else:
+                self.tokenizer = self.init_tokenizer(tokenizer_path)
         self.device = device
         self.max_length = max_length
         self.batch_size = batch_size
@@ -34,6 +59,13 @@ class FACEScorer:
                                         require_sid=fft_args['require_sid'] if 'require_sid' in fft_args else True,
                                         verbose=fft_args['verbose'] if 'verbose' in fft_args else False)
 
+        self.fft_method = fft_method
+        self.fft_preprocess = fft_preprocess
+        self.fft_value = fft_value
+        self.fft_require_sid = fft_require_sid
+        self.fft_verbose = fft_verbose
+        
+
     def load_model(self, model_path: str, device: str):
         model = AutoModelForCausalLM.from_pretrained(model_path).to(device)
         return model
@@ -44,7 +76,7 @@ class FACEScorer:
         return tokenizer
 
     @torch.no_grad()
-    def score_texts(self, srcs: List[str], tgts: List[str], batch_size=None, fft_args=None):
+    def score_texts(self, srcs: List[str], tgts: List[str], batch_size=None):
         assert len(srcs) == len(tgts)
         if batch_size is None:
             batch_size = self.batch_size
@@ -55,7 +87,7 @@ class FACEScorer:
             try:
                 src_encoded = self.texts_to_encoded(src_list)
                 tgt_encoded = self.texts_to_encoded(tgt_list)
-                scores = self.score_encoded(src_encoded, tgt_encoded, fft_args)
+                scores = self.score_encoded(src_encoded, tgt_encoded)
             except RuntimeError:
                 traceback.print_exc()
                 print(f'batch {i} failed')
@@ -65,20 +97,21 @@ class FACEScorer:
             final_scores.extend(scores)
         return final_scores
     
-    def score_encoded(self, src_encoded, tgt_encoded, fft_args=None):
+    def score_encoded(self, src_encoded, tgt_encoded):
         src_nll = self.encoded_to_nll(src_encoded)
         tgt_nll = self.encoded_to_nll(tgt_encoded)
-        scores = self.score_nlls(src_nll, tgt_nll, fft_args)
+        scores = self.score_nlls(src_nll, tgt_nll)
         return scores
     
-    def score_nlls(self, src_nll: List, tgt_nll: List, fft_args=None):
-        src_powers, src_freqs = self.nll_to_spectrum(src_nll, fft_args)
-        tgt_powers, tgt_freqs = self.nll_to_spectrum(tgt_nll, fft_args)
-        scores = self.spectrum_dist(src_powers, src_freqs, tgt_powers, tgt_freqs, self.metrics)
+    def score_nlls(self, src_nll: List, tgt_nll: List):
+        src_powers, src_freqs = self.nll_to_spectrum(src_nll)
+        tgt_powers, tgt_freqs = self.nll_to_spectrum(tgt_nll)
+        scores = self.spectrum_dist(src_powers, src_freqs, tgt_powers, tgt_freqs)
         return scores
     
     @torch.no_grad()
     def texts_to_encoded(self, texts: List[str], batch_size=None):
+        assert self.tokenizer is not None
         if batch_size is None:
             batch_size = self.batch_size
         if batch_size >= len(texts):
@@ -86,6 +119,7 @@ class FACEScorer:
                 encoded = self.tokenizer(texts, 
                                         return_tensors='pt', 
                                         padding=True, 
+                                        truncation=True,
                                         max_length=self.max_length).to(self.device)
             except RuntimeError:
                 traceback.print_exc()
@@ -98,6 +132,7 @@ class FACEScorer:
 
     @torch.no_grad()
     def texts_to_encoded_iter(self, texts: List[str], batch_size=None) -> Iterable:
+        assert self.tokenizer is not None
         if batch_size is None:
             batch_size = self.batch_size
         for i in range(0, len(texts), batch_size):
@@ -106,6 +141,7 @@ class FACEScorer:
                 encoded = self.tokenizer(text_list, 
                                         return_tensors='pt', 
                                         padding=True, 
+                                        truncation=True,
                                         max_length=self.max_length).to(self.device)
             except RuntimeError:
                 traceback.print_exc()
@@ -116,6 +152,7 @@ class FACEScorer:
 
     @torch.no_grad()
     def encoded_to_nll(self, encoded) -> List:
+        assert self.model is not None
         ids = encoded['input_ids']
         output = self.model(ids, labels=ids)
         logits = output.logits.to(self.device)
@@ -140,8 +177,7 @@ class FACEScorer:
                     nll = nll.tolist()
                 f.write(' '.join([f'{x:.{decimal}f}' for x in nll]) + '\n')
     
-    
-    
+
     def nll_to_spectrum(self, nlls: List, fft_args=None, packed=False):
         if isinstance(nlls[0], torch.Tensor):
             nlls = [nll.cpu().numpy() for nll in nlls]
@@ -159,6 +195,7 @@ class FACEScorer:
                                         value=fft_args['value'] if 'value' in fft_args else 'norm',
                                         require_sid=fft_args['require_sid'] if 'require_sid' in fft_args else True,
                                         verbose=fft_args['verbose'] if 'verbose' in fft_args else False)
+
         if packed:
             df = fft_processor.process(nlls, packed=True)
             return df
@@ -166,8 +203,8 @@ class FACEScorer:
             freqs, powers, _ = fft_processor.process(nlls, packed=False)
             return powers, freqs
     
-    def spectrum_dist(self, src_p, src_f, tgt_p, tgt_f, metrics=None):
-        results = cal_metrics(src_p, src_f, tgt_p, tgt_f, metrics, self.use_max)
+    def spectrum_dist(self, src_p, src_f, tgt_p, tgt_f):
+        results = cal_metrics(src_p, src_f, tgt_p, tgt_f, self.metrics, self.use_max)
         return results
     
 
@@ -184,10 +221,10 @@ class FACEScorer:
         return nll_list
 
     @torch.no_grad()
-    def texts_to_spectrum(self, texts: List[str], batch_size=None, fft_args=None):
+    def texts_to_spectrum(self, texts: List[str], batch_size=None):
         """
         For quick experiment over a text input
         """
         nll_list = self.texts_to_nll(texts, batch_size)
-        df = self.nll_to_spectrum(nll_list, fft_args, packed=True)
+        df = self.nll_to_spectrum(nll_list, packed=True)
         return df
