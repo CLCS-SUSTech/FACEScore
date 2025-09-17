@@ -22,7 +22,8 @@ class FACEScorer:
                  fft_value='norm',
                  fft_require_sid=True,
                  fft_verbose=False,
-                 use_max=False):
+                 use_max=False,
+                 save_intermediate=True):
         """
         :param model_path: path to the model, None if inferencing not needed
         :param tokenizer_path: path to the tokenizer, if None, tokenizer will be loaded from model_path
@@ -50,14 +51,22 @@ class FACEScorer:
         self.log_softmax = nn.LogSoftmax(dim=1)
         self.metrics = metrics
         self.use_max = use_max
-        if fft_args is None:
-            self.fft_processor = FFTProcessor()
-        else:
-            self.fft_processor = FFTProcessor(method=fft_args['method'] if 'method' in fft_args else 'fft',
-                                        preprocess=fft_args['preprocess'] if 'preprocess' in fft_args else 'none',
-                                        value=fft_args['value'] if 'value' in fft_args else 'norm',
-                                        require_sid=fft_args['require_sid'] if 'require_sid' in fft_args else True,
-                                        verbose=fft_args['verbose'] if 'verbose' in fft_args else False)
+        self.save_intermediate = save_intermediate
+        if save_intermediate:
+            self.intermediates = {
+                'src_nlls': [],
+                'tgt_nlls': [],
+                'src_powers': [],
+                'tgt_powers': [],
+                'src_freqs': [],
+                'tgt_freqs': [],
+            }
+
+        self.fft_processor = FFTProcessor(method=fft_method,
+                                        preprocess=fft_preprocess,
+                                        value=fft_value,
+                                        require_sid=fft_require_sid,
+                                        verbose=fft_verbose)
 
         self.fft_method = fft_method
         self.fft_preprocess = fft_preprocess
@@ -76,11 +85,11 @@ class FACEScorer:
         return tokenizer
 
     @torch.no_grad()
-    def score_texts(self, srcs: List[str], tgts: List[str], batch_size=None):
+    def score_texts(self, srcs: List[str], tgts: List[str], dist_name: str = 'emd', batch_size=None):
         assert len(srcs) == len(tgts)
         if batch_size is None:
             batch_size = self.batch_size
-        final_scores = []
+        all_results = []
         for i in range(0, len(srcs), batch_size):
             src_list = srcs[i:i+batch_size]
             tgt_list = tgts[i:i+batch_size]
@@ -94,19 +103,31 @@ class FACEScorer:
                 print(f'src_list: {src_list}')
                 print(f'tgt_list: {tgt_list}')
                 exit(0)
-            final_scores.extend(scores)
-        return final_scores
+            all_results.extend(scores)
+        # save results
+        self.all_results = all_results 
+        # collect 
+        results = self.collect(dist_name)
+        return results
     
     def score_encoded(self, src_encoded, tgt_encoded):
         src_nll = self.encoded_to_nll(src_encoded)
         tgt_nll = self.encoded_to_nll(tgt_encoded)
         scores = self.score_nlls(src_nll, tgt_nll)
+        if self.save_intermediate:
+            self.intermediates['src_nlls'].append(src_nll)
+            self.intermediates['tgt_nlls'].append(tgt_nll)
         return scores
     
     def score_nlls(self, src_nll: List, tgt_nll: List):
         src_powers, src_freqs = self.nll_to_spectrum(src_nll)
         tgt_powers, tgt_freqs = self.nll_to_spectrum(tgt_nll)
         scores = self.spectrum_dist(src_powers, src_freqs, tgt_powers, tgt_freqs)
+        if self.save_intermediate:
+            self.intermediates['src_powers'].append(src_powers)
+            self.intermediates['tgt_powers'].append(tgt_powers)
+            self.intermediates['src_freqs'].append(src_freqs)
+            self.intermediates['tgt_freqs'].append(tgt_freqs)
         return scores
     
     @torch.no_grad()
@@ -207,6 +228,20 @@ class FACEScorer:
         results = cal_metrics(src_p, src_f, tgt_p, tgt_f, self.metrics, self.use_max)
         return results
     
+    def collect(self, dist_name:str='emd'):
+        if self.all_results is None:
+            raise ValueError('No results to collect')
+        collected = []
+        if dist_name in ['so', 'corr', 'spearman', 'emd', 'kl', 'js']:
+            for res in self.all_results:
+                collected.append(res[dist_name])
+        elif dist_name == 'ensemble3':
+            pass
+        elif dist_name == 'ensemble5':
+            pass
+        else:
+            raise ValueError(f'Invalid dist_name: {dist_name}')
+        return collected
 
     @torch.no_grad()
     def texts_to_nll(self, texts: List[str], batch_size=None) -> List:
