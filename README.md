@@ -1,3 +1,8 @@
+# FACEScore
+
+This repo contains code for FACEScore (FACE for *F*ourier *A*nalysis of *C*ross-*E*ntropy), a metric for evaluating open-ended natural language genration (NLG) using spectral features of text surprisal. 
+
+
 ### Direct Use
 
 ```python
